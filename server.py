@@ -41,7 +41,7 @@ def choice1():
     started_time = current_time - (3 * 60 * 60)  # 3 hours ago
 
     pipeline = [
-        {"$match": {"payload.board_name": "Arduino Leonardo - Board_kitchen", "payload.timestamp": {"$exists": True}}},
+        {"$match": {"payload.parent_asset_uid": "b51-t3c-3s5-791", "asset_uid": "269-85b-zf0-o64","payload.timestamp": {"$exists": True}}},
         {"$addFields": {"timestamp_as_int": {"$toLong": "$payload.timestamp"}}},
         {"$match": {"timestamp_as_int": {"$gte": started_time}}},
         {"$group": {"_id": None, "averageMoisture": {"$avg": {"$toDouble": "$payload.RH_kitchen"}}}}
@@ -56,7 +56,7 @@ def choice1():
 # Calculate the average water consumption per cycle in the smart dishwasher
 def choice2():
     pipeline = [
-        {"$match": {"payload.board_name": "Arduino Leonardo - Board_washer"}},
+        {"$match": {"payload.parent_asset_uid": "2d8a80be-d208-49fc-9eb3-5129cda0e0c0", "asset_uid": "f2z-hw9-r27-fv8"}},
         {"$group": {"_id": None, "averageWaterConsumption": {"$avg": {"$toDouble": "$payload.Water_washer"}}}}
     ]
 
@@ -75,24 +75,24 @@ def choice3():
         payload = document.get("payload", {})
         voltage = payload.get("Voltage_kitchen") or payload.get("Voltage_washer") or payload.get("Voltage_room")
         current = payload.get("Current_kitchen") or payload.get("Current_washer") or payload.get("Current_room")
-        board_name = payload.get("board_name")
+        parent_asset_uid = payload.get("parent_asset_uid")
         timestamp = payload.get("timestamp")
 
-        if voltage and current and board_name and timestamp:
+        if voltage and current and parent_asset_uid and timestamp:
             power = float(voltage) * float(current)  
             timestamp = int(timestamp)
 
-            if board_name in devices:
-                devices[board_name]["total_power"] += power
-                devices[board_name]["count"] += 1
-                devices[board_name]["timestamps"].append(timestamp)
+            if parent_asset_uid in devices:
+                devices[parent_asset_uid]["total_power"] += power
+                devices[parent_asset_uid]["count"] += 1
+                devices[parent_asset_uid]["timestamps"].append(timestamp)
             else:
-                devices[board_name] = {
+                devices[parent_asset_uid] = {
                     "total_power": power,
                     "count": 1,
                     "voltage": float(voltage),
                     "current": float(current),
-                    "timestamps": [timestamp]
+                    "timestamps": [timestamp],
                 }
 
     if not devices:
