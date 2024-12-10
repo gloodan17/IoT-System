@@ -2,6 +2,7 @@ import socket
 import ipaddress  
 import time  
 from pymongo import MongoClient  
+from bson.objectid import ObjectId
 
 maxPacketSize = 1024
 
@@ -30,45 +31,55 @@ except ValueError:
     print("Invalid port number. Must be between 1024 and 65535.")
     exit(1)
 
-# Connect to MongoDB 
-mongo_client = MongoClient("mongodb+srv://phong:mAyiXVePqgHNyC3U@cluster0.mkom8.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-db = mongo_client["test"]  # Database
-collection = db["phongDataniz_virtual"]  # Collection
+# Connect to MongoDB
+client = MongoClient("mongodb+srv://phong:mAyiXVePqgHNyC3U@cluster0.mkom8.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")  # Update your connection string
+db = client['test']  # Database
+metadata_collection = db['phongDataniz_metadata']
+virtual_collection = db['phongDataniz_virtual']
 
 # Calculate the average moisture in the kitchen fridge over the last 3 hours
-def choice1():
-    current_time = int(time.time()) 
+def choice1(metadata_collection, virtual_collection):
+    # Query the Metadata Collection
+    metadata = metadata_collection.find_one({"_id": ObjectId("67579109250274380ba04219")})
+    parent_asset_uid = metadata.get("assetUid")
+
+    current_time = int(time.time())
     started_time = current_time - (3 * 60 * 60)  # 3 hours ago
 
     pipeline = [
-        {"$match": {"payload.parent_asset_uid": "b51-t3c-3s5-791", "asset_uid": "269-85b-zf0-o64","payload.timestamp": {"$exists": True}}},
+        {"$match": {"payload.parent_asset_uid": parent_asset_uid, "payload.timestamp": {"$exists": True}}},
         {"$addFields": {"timestamp_as_int": {"$toLong": "$payload.timestamp"}}},
         {"$match": {"timestamp_as_int": {"$gte": started_time}}},
         {"$group": {"_id": None, "averageMoisture": {"$avg": {"$toDouble": "$payload.RH_kitchen"}}}}
     ]
 
-    result = list(collection.aggregate(pipeline))
+    result = list(virtual_collection.aggregate(pipeline))
     if result:
-        return f"The average moisture inside my kitchen fridge in the past three hours: {result[0]['averageMoisture']:.2f}"
+        return f"\n\nThe average moisture inside my kitchen fridge in the past three hours: {result[0]['averageMoisture']:.2f} RH%.\n"
     else:
-        return "No data found for the past 3 hours."
+        return "\nNo data found for the past 3 hours.\n"
 
 # Calculate the average water consumption per cycle in the smart dishwasher
-def choice2():
+def choice2(metadata_collection, virtual_collection):
+    # Query the Metadata Collection
+    metadata = metadata_collection.find_one({"_id": ObjectId("675790e9250274380ba04215")})
+    parent_asset_uid = metadata.get("assetUid")
+
     pipeline = [
-        {"$match": {"payload.parent_asset_uid": "2d8a80be-d208-49fc-9eb3-5129cda0e0c0", "asset_uid": "f2z-hw9-r27-fv8"}},
+        {"$match": {"payload.parent_asset_uid": parent_asset_uid}},
         {"$group": {"_id": None, "averageWaterConsumption": {"$avg": {"$toDouble": "$payload.Water_washer"}}}}
     ]
 
-    result = list(collection.aggregate(pipeline))
+    result = list(virtual_collection.aggregate(pipeline))
     if result:
-        return f"The average water consumption per cycle in my smart dishwasher: {result[0]['averageWaterConsumption'] * 0.219969 * 30:.2f} gallons"
+        return f"\n\nThe average water consumption per cycle in my smart dishwasher: {result[0]['averageWaterConsumption'] * 0.219969 * 30:.2f} gallons.\n"
     else:
-        return "No data found for water consumption."
+        return "\nNo data found for water consumption.\n"
 
 # Determine the device with the highest energy consumption
-def choice3():
-    data = collection.find({})  
+def choice3(metadata_collection, virtual_collection):
+    # Query the Metadata Collection
+    data = virtual_collection.find({}) 
     devices = {}
 
     for document in data:
@@ -95,10 +106,6 @@ def choice3():
                     "timestamps": [timestamp],
                 }
 
-    if not devices:
-        print("No valid data available for any device.")
-        return
-
     # Energy consumption for each device
     for device, info in devices.items():
         if len(info["timestamps"]) > 1:
@@ -113,17 +120,20 @@ def choice3():
     # Find the device with the highest energy consumption
     max_energy_device = max(devices.items(), key=lambda x: x[1]["energy_consumption"])
 
-    return f"\nThe device with the highest energy consumption is {max_energy_device[0]} " \
-           f"with {max_energy_device[1]['energy_consumption']:.2f} kWh."
+    device_doc = metadata_collection.find_one({"assetUid": max_energy_device[0]})
+    device_name = device_doc.get("customAttributes", {}).get("name")
+    
+    return f"\n\nThe device with the highest energy consumption is {device_name} " \
+           f"with {max_energy_device[1]['energy_consumption']:.2f} kWh.\n"
 
 # Process client's choice and retrieve data
 def extract_data(choice):
     if choice == 1:
-        return choice1()
+        return choice1(metadata_collection, virtual_collection)
     elif choice == 2:
-        return choice2()
+        return choice2(metadata_collection, virtual_collection)
     elif choice == 3:
-        return choice3()
+        return choice3(metadata_collection, virtual_collection)
     else:
         return "Invalid choice."
 
